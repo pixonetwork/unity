@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>PN // Unity Loader v6.1</title>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&display=swap" rel="stylesheet">
+
+    <style>
+        :root {
+            --neon: #00f2ff;
+            --neon-glow: rgba(0, 242, 255, 0.7);
+            --bg: #000000;
+            --border: rgba(0, 242, 255, 0.3);
+            --success: #39ff14;
+            --error: #ff3333;
+            --border-width: 1px;
+        }
+
+        * { font-family: 'Orbitron', sans-serif !important; box-sizing: border-box; letter-spacing: 1px; -webkit-tap-highlight-color: transparent; }
+        body, html { margin: 0; padding: 0; height: 100%; width: 100%; overflow: hidden; background-color: var(--bg); color: #fff; }
+        
+        #game-canvas { width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; z-index: 1; visibility: hidden; background: #000; }
+
+        /* --- TERMINAL LOADER --- */
+        #loader-overlay { position: fixed; inset: 0; background: #000; z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .terminal-box {
+            width: 90%; max-width: 550px; background: #050505; border: var(--border-width) solid var(--border);
+            padding: 50px 40px; text-align: center; border-radius: 4px; 
+            display: flex; flex-direction: column; align-items: center;
+            animation: slam-in 0.4s cubic-bezier(0.17, 0.89, 0.32, 1.28);
+        }
+        @keyframes slam-in { 0% { transform: scale(3); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+
+        .logo-text { font-size: 2.2rem; font-weight: 900; color: var(--neon); text-shadow: 0 0 20px var(--neon-glow); margin-bottom: 10px; }
+        .term-status { font-size: 11px; color: var(--neon); margin-bottom: 25px; font-weight: 700; text-transform: uppercase; letter-spacing: 3px; min-height: 1.2em; }
+        .bar-container { width: 100%; height: 8px; background: #111; border: var(--border-width) solid var(--border); position: relative; overflow: hidden; }
+        .bar-fill { height: 100%; background: var(--neon); width: 0%; transition: width 0.1s linear; box-shadow: 0 0 15px var(--neon); }
+        .term-logs { margin-top: 30px; height: 100px; overflow-y: auto; font-family: monospace !important; font-size: 10px; color: #444; text-align: left; width: 100%; border-top: 1px solid #111; padding-top: 15px; scrollbar-width: none; }
+        .term-logs::-webkit-scrollbar { display: none; }
+        .log-line { margin-bottom: 4px; display: flex; justify-content: space-between; transition: color 0.3s; }
+        .log-line.verified { color: var(--success); text-shadow: 0 0 5px var(--success); }
+
+        /* --- SPLASHES --- */
+        .cinematic-overlay { position: fixed; inset: 0; background: #000; z-index: 2000; display: none; align-items: center; justify-content: center; flex-direction: column; opacity: 0; transition: opacity 0.8s; }
+        .cinematic-content { transform: scale(0.8); transition: 2s ease-out; text-align: center; }
+        .unity-logo { width: auto; max-width: 280px; height: 100px; margin-bottom: 30px; object-fit: contain; filter: invert(1); }
+        .huge-title { font-size: 2.5rem; font-weight: 900; color: #fff; letter-spacing: 12px; text-transform: uppercase; }
+
+        /* --- STARTING RING --- */
+        #starting-overlay { position: fixed; inset: 0; background: #000; z-index: 3000; display: none; flex-direction: column; align-items: center; justify-content: center; }
+        .neural-ring { width: 60px; height: 60px; border: 4px solid rgba(0, 242, 255, 0.1); border-top: 4px solid var(--neon); border-radius: 50%; animation: spin 0.8s infinite linear; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+<canvas id="game-canvas"></canvas>
+
+<div id="loader-overlay">
+    <div class="terminal-box">
+        <div class="logo-text">PixoNetwork</div>
+        <div id="term-status" class="term-status">Awaiting Link...</div>
+        <div class="bar-container"><div id="bar" class="bar-fill"></div></div>
+        <div class="term-logs" id="term-logs"></div>
+    </div>
+</div>
+
+<div id="unity-splash" class="cinematic-overlay">
+    <div class="cinematic-content" id="unity-content">
+        <img class="unity-logo" src="https://upload.wikimedia.org/wikipedia/commons/1/19/Unity_Technologies_logo.svg">
+        <div class="huge-title">Unity Engine</div>
+    </div>
+</div>
+
+<div id="pixo-splash" class="cinematic-overlay">
+    <div class="cinematic-content" id="pixo-content">
+        <div style="font-size:10px; color:var(--neon); margin-bottom:15px; letter-spacing:8px;">BROUGHT TO YOU BY</div>
+        <div class="huge-title" style="font-weight: 900;">PIXONETWORK</div>
+    </div>
+</div>
+
+<div id="starting-overlay">
+    <div class="neural-ring"></div>
+    <div id="starting-msg" style="margin-top:30px; font-size:12px; color:var(--neon); font-weight:900; letter-spacing:5px;">STARTING_SYSTEM</div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+
+    const BASE_PATH = "/zeblkn/";
+    
+    const config = {
+        dataUrl: BASE_PATH + "Build/c35f3810f9a94c1270f9b7c15d1aa2a4.data.br",
+        frameworkUrl: BASE_PATH + "Build/89eaecc0a97288e80d58e71b9b911902.framework.js",
+        codeUrl: BASE_PATH + "Build/30c1e936c60579fb88bda050729dd680.wasm.br",
+        streamingAssetsUrl: BASE_PATH + "StreamingAssets",
+        companyName: "PixoNetwork",
+        productName: "WaveRoad3D",
+        productVersion: "1.0",
+    };
+
+    const LOADER_URL = BASE_PATH + "Build/5466f9516118b4f731990b73f053164c.loader.js";
+
+    // Shard Definitions
+    const SHARDS = [
+        { path: config.dataUrl, mime: "application/octet-stream", parts: { start: 0, end: 8 }, encoding: "br" },
+        { path: config.codeUrl, mime: "application/wasm", parts: { start: 0, end: 4 }, encoding: "br" },
+        { path: config.frameworkUrl, mime: "application/javascript", parts: null, encoding: "none" }
+    ];
+
+    const nativeFetch = window.fetch.bind(window);
+    const barEl = document.getElementById('bar');
+    const statusEl = document.getElementById('term-status');
+    const logsEl = document.getElementById('term-logs');
+    
+    window.unityMergedFiles = {};
+    const fileEncodings = {}; 
+
+    function addLog(label) {
+        const div = document.createElement('div');
+        div.className = 'log-line';
+        div.innerHTML = `<span>> ${label}</span><span class="byte-count">0 KB</span>`;
+        logsEl.appendChild(div);
+        logsEl.scrollTop = logsEl.scrollHeight;
+        return div.querySelector('.byte-count');
+    }
+
+    // --- NEURAL INTERCEPTORS ---
+    function setupInterceptors() {
+        window.fetch = function(url, ...args) {
+            const u = url.toString();
+            const key = Object.keys(window.unityMergedFiles).find(k => u.includes(k));
+            if (key && window.unityMergedFiles[key]) {
+                const encoding = fileEncodings[key];
+                return nativeFetch(window.unityMergedFiles[key], ...args).then(res => {
+                    const newHeaders = new Headers(res.headers);
+                    if (encoding && encoding !== 'none') newHeaders.set('Content-Encoding', encoding);
+                    if (key.includes('.js') || key.includes('.framework')) newHeaders.set('Content-Type', 'application/javascript');
+                    return new Response(res.body, { status: 200, statusText: "OK", headers: newHeaders });
+                });
+            }
+            return nativeFetch(url, ...args);
+        };
+
+        const OriginalXHR = window.XMLHttpRequest;
+        window.XMLHttpRequest = function() {
+            const xhr = new OriginalXHR();
+            const originalOpen = xhr.open;
+            xhr.open = function(method, url, ...args) {
+                const u = url.toString();
+                const key = Object.keys(window.unityMergedFiles).find(k => u.includes(k));
+                if (key && window.unityMergedFiles[key]) {
+                    const encoding = fileEncodings[key];
+                    const originalGetHeader = xhr.getResponseHeader;
+                    xhr.getResponseHeader = function(h) {
+                        if (h.toLowerCase() === 'content-encoding' && encoding && encoding !== 'none') return encoding;
+                        if (h.toLowerCase() === 'content-type' && (key.includes('.js') || key.includes('.framework'))) return 'application/javascript';
+                        return originalGetHeader.apply(this, arguments);
+                    };
+                    return originalOpen.call(this, method, window.unityMergedFiles[key], ...args);
+                }
+                return originalOpen.call(this, method, url, ...args);
+            };
+            return xhr;
+        };
+    }
+
+    async function processStream(response, logUI) {
+        const reader = response.body.getReader();
+        const contentLength = +response.headers.get('Content-Length') || 1;
+        let received = 0; let chunks = [];
+        while(true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            chunks.push(value); received += value.length;
+            logUI.innerText = (received / 1024).toFixed(0) + " KB";
+            barEl.style.width = Math.floor((received / contentLength) * 100) + "%";
+        }
+        logUI.parentElement.classList.add('verified');
+        return new Uint8Array(await new Blob(chunks).arrayBuffer());
+    }
+
+    async function syncAsset(fileInfo) {
+        const bufs = [];
+        const baseName = fileInfo.path;
+        const cleanName = baseName.split('/').pop();
+        statusEl.innerText = `LINKING: ${cleanName.toUpperCase()}`;
+        barEl.style.width = "0%";
+        fileEncodings[baseName] = fileInfo.encoding;
+
+        if (fileInfo.parts) {
+            for (let i = fileInfo.parts.start; i <= fileInfo.parts.end; i++) {
+                const res = await nativeFetch(baseName + ".part" + i);
+                if (!res.ok) throw new Error("Shard Missing");
+                bufs.push(await processStream(res, addLog(`${cleanName}.P${i}`)));
+            }
+        } else {
+            const res = await nativeFetch(baseName);
+            if (!res.ok) throw new Error("File Missing");
+            bufs.push(await processStream(res, addLog(cleanName)));
+        }
+        window.unityMergedFiles[baseName] = URL.createObjectURL(new Blob(bufs, { type: fileInfo.mime }));
+    }
+
+    async function playCinematic(id, contentId) {
+        const el = document.getElementById(id);
+        const content = document.getElementById(contentId);
+        el.style.display = "flex";
+        await new Promise(r => setTimeout(r, 50));
+        el.style.opacity = "1";
+        if(content) content.style.transform = "scale(1)";
+        await new Promise(r => setTimeout(r, 2200));
+        el.style.opacity = "0";
+        await new Promise(r => setTimeout(r, 600));
+        el.style.display = "none";
+    }
+
+    async function init() {
+        try {
+            indexedDB.deleteDatabase("UnityCache");
+            for (const file of SHARDS) { await syncAsset(file); }
+
+            setupInterceptors();
+            document.getElementById('loader-overlay').style.display = "none";
+            
+            await playCinematic("unity-splash", "unity-content");
+            await playCinematic("pixo-splash", "pixo-content");
+            
+            document.getElementById('starting-overlay').style.display = "flex";
+
+            const script = document.createElement("script");
+            script.src = LOADER_URL;
+            script.onload = () => {
+                createUnityInstance(document.querySelector("#game-canvas"), config, (progress) => {
+                    // Update internal progress bar if desired
+                }).then((unityInstance) => {
+                    document.getElementById('starting-overlay').style.display = "none";
+                    document.getElementById('game-canvas').style.visibility = "visible";
+                    window.unityInstance = unityInstance;
+                }).catch((message) => {
+                    console.error("Unity Initialization Failed:", message);
+                    document.getElementById('starting-msg').innerText = "ENGINE_FAULT";
+                });
+            };
+            document.body.appendChild(script);
+
+        } catch (e) {
+            statusEl.innerText = "UPLINK_FAILURE";
+            statusEl.style.color = "var(--error)";
+            console.error(e);
+        }
+    }
+
+    window.addEventListener('load', init);
+})();
+</script>
+</body>
+</html>
+
